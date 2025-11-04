@@ -4,8 +4,7 @@ import SplineScene from "./SplineScene";
 import { useChatAI } from "../../hooks/useChatAI";
 import { useSelectedUser } from "../../Context/SelectedUserContext";
 
-const apiKey =
-  "***REMOVED***";
+const apiKey = "";
 
 // 🎧 Funcție TTS (Text to Speech)
 async function tts(text: string, index: number, setPlayingIndex: Function) {
