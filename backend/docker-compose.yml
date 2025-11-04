@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: skepyadb-container
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: Paroladb
+      POSTGRES_DB: skepyadb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  postgres-api:
+    build: ./postgres-api   # 👈 folderul unde e server.py + Dockerfile
+    container_name: skepya-api
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: Paroladb
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: skepyadb
+    ports:
+      - "8080:8080"
+
+  fastapi-web:
+    build: ./fastapi_web
+    container_name: skepya-fastapi
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: Paroladb
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: skepyadb
+    ports:
+      - "8090:8080"
+
+volumes:
+  postgres_data:
+
