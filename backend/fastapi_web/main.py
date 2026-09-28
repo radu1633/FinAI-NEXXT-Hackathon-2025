@@ -47,14 +47,13 @@ app.add_middleware(
 # -----------------------------------------------------
 # AWS Bedrock Config
 # -----------------------------------------------------
-AWS_REGION = "us-west-2"
-MODEL_ID = "global.anthropic.claude-sonnet-4-20250514-v1:0"
+# Credentials come from the environment (see .env.example), never from code:
+# either AWS_BEARER_TOKEN_BEDROCK (Bedrock API key) or the standard
+# AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY credential chain.
+AWS_REGION = os.getenv("AWS_REGION", "us-west-2")
+MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "global.anthropic.claude-sonnet-4-20250514-v1:0")
 
-bedrock = boto3.client(
-    'bedrock-runtime',
-    aws_session_token='ABSKQmVkcm9ja0FQSUtleS12YnVoLWF0LTE0OTI1MTI3MTU2NDpJcUxTNnlnUEl2UEJSbzFLRzNiR0tSSVY1TVpneFZ0cWFXdkZLajcyMDBkemM2OE5OZWczMVp3ZlVzQT0=',
-    region_name='us-west-2'
-)
+bedrock = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
 # -----------------------------------------------------
 # Generic Bedrock caller for custom system prompts
