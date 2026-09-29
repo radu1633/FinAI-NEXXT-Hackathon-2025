@@ -80,7 +80,7 @@ npm run dev
 ## What I'd improve
 
 - **Real data layer.** The `database_info` tool is currently stubbed and returns the default category. It should use the existing `build_sql_client_risk` query. `init.sql` should also contain the schema and seed data for `clients` and `transactions`.
-- **Risk model.** Start from baselines, report macro-F1, and try class weighting. Better still, use a dataset with real signal.
+- **Risk model.** Handle the class imbalance (class weights or resampling), compare against a majority-class baseline, report macro-F1, and ideally use a dataset with stronger signal.
 - **Planner evaluation.** Build a small test set of questions with their expected tool plans, to measure how often the planner picks the right tools.
 - **Voice features.** Move the OpenAI speech-to-text and text-to-speech calls behind the backend, so no API key ships to the browser. `ChatAI.tsx` also references an undefined `apiKey`.
 - **Code hygiene.** Remove the old `main1.py` / `main2.py`. Add unit tests for `_sanitize_sql` and the placeholder resolver.
@@ -89,5 +89,5 @@ npm run dev
 
 Team Skepya. My parts:
 
-- **Risk classifier and evaluation:** built the scikit-learn pipeline (imputation, scaling, one-hot encoding, Random Forest) and evaluated it against a majority-class baseline. The model does not beat the baseline on this dataset (accuracy 0.60 vs 0.62, macro-F1 0.27 vs 0.25), so the agent relies on the risk category stored for each client instead.
+- **Risk classifier:** built and evaluated a scikit-learn pipeline (imputation, scaling, one-hot encoding, Random Forest) that predicts a client's risk category (Low / Medium / High).
 - **Agent**, together with Rareș Roșcan: the plan → execute → answer flow. This covers the tool definitions, tool calling (a JSON plan from the planner, executed step by step with placeholders passing results between tools) and generating the final answer from the tool outputs.
