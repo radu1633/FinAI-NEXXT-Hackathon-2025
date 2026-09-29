@@ -1,106 +1,93 @@
-# 🧠 FinAI — Your AI-Powered Financial Companion
+# FinAI — LLM agent for personalized investment advice
 
-> **"Your money deserves a smarter conversation."**  
-> FinAI is an intelligent financial assistant that uses AI to provide personalized investment recommendations by analyzing user behavior and financial risk in real time.
+A banking assistant that answers questions about a client's finances by **planning tool calls over a PostgreSQL database** and recommending investment packages matched to the client's risk category. Built by team **Skepya** at the **NEXXT AI Hackathon 2025**.
 
----
+## Problem
 
-## 🚀 About the Project
+Banks give clients plenty of data (transactions, product lists, charts) but little guidance on what actually fits their situation and risk tolerance.
 
-FinAI was developed during the **NEXXT AI Hackathon 2025** by team **Skepya**, to address one of the biggest challenges in modern finance:
+## How it works
 
-> 💬 *Banks provide data, but not direction.*  
-> Users receive hundreds of charts, products, and reports, but no clear guidance on what actually fits their real goals.
+The backend (FastAPI) runs a **plan → execute → answer** agent on **Claude Sonnet 4 via AWS Bedrock**:
 
----
+1. **Planner.** The LLM returns a strict-JSON plan of 0–3 tool calls (`database_info`, `transaction_history`, `investment_packages`, or `skip`), with a short reason and a confidence score.
+2. **Executor.** Steps run sequentially, with placeholder resolution between them. For example, `{{database_info.risk_profile}}` feeds the client's risk category into the package lookup.
+3. **Answerer.** A second LLM call writes the final reply, using all tool outputs as context.
 
-## 🧩 The Problem
+```mermaid
+flowchart LR
+  UI[React frontend] -->|/agent_chat_v2| API[FastAPI]
+  API --> P[Planner LLM<br/>Claude Sonnet 4 on Bedrock]
+  P -->|JSON plan| E[Tool executor]
+  E --> T1[database_info]
+  E --> T2[transaction_history]
+  E --> T3[investment_packages]
+  T1 & T2 --> Q[Query service<br/>Flask] --> PG[(PostgreSQL)]
+  E --> A[Answer LLM] --> UI
+```
 
-1. **Information Overload** – Customers receive too much financial data and too few actionable insights.  
-2. **Lack of Personalization** – Current systems offer generic recommendations that ignore the individual risk profile.  
-3. **Missed Growth Opportunities** – Without guidance, users remain passive and banks lose potential revenue.
+**Natural language → SQL (`/prompt`).** The model writes a single SQL query, and the backend enforces safety before running it:
+- only `SELECT`/`WITH` statements are accepted;
+- dangerous keywords and multiple statements are blocked;
+- a `LIMIT` is appended when missing;
+- the query runs in a read-only transaction with a 5-second statement timeout.
 
----
+**Risk classifier prototype** (`RiskScoreClassifier.ipynb`) is a scikit-learn pipeline:
+- preprocessing: median imputation and scaling for numeric features, one-hot encoding for categorical ones;
+- model: Random Forest;
+- data: the Kaggle *Financial Risk Assessment* dataset, 5,716 rows after dropping missing values;
+- target: 3 classes (Low / Medium / High).
 
-## 💡 The Solution — FinAI
+## Results
 
-FinAI combines **intelligent profiling**, **dynamic recommendations**, and an **AI conversational assistant** to deliver personalized financial experiences.
+Random Forest (100 trees), test set of 1,144 clients:
 
-| Component | Description |
-|-----------|-------------|
-| 🧠 **Profile Intelligence Engine** | Analyzes spending, savings, and risk tolerance to build an adaptive financial profile. |
-| 📊 **Dynamic Product Matching** | Recommends suitable investment products based on a trained ML model. |
-| 💬 **Personalized Advisory Chat** | Explains AI decisions transparently and educates users. |
+| Class | Precision | Recall | F1 | Support |
+|---|---|---|---|---|
+| Low | 0.61 | 0.96 | 0.75 | 706 |
+| Medium | 0.25 | 0.03 | 0.05 | 335 |
+| High | 0.00 | 0.00 | 0.00 | 103 |
+| **Accuracy** | | | **0.60** | 1,144 |
+| **Macro avg** | 0.29 | 0.33 | 0.27 | 1,144 |
 
----
+The classes are imbalanced (62% of clients are "Low" risk), and the model ends up predicting almost only that class: it never identifies a "High"-risk client. For this reason the classifier is not used by the agent, which relies on the risk category stored for each client instead.
 
-## ⚙️ Tech Stack
+The classifier does **not** beat the majority baseline. It predicts "Low" almost always, with recall 0.00 on "High". The features in this dataset carry very little signal for the label, so the model is not used by the agent. The agent relies on the risk category stored for each client instead. Takeaway: always compare against a trivial baseline before building on top of a model.
 
-### 🖥️ Frontend
-- **React.js + TypeScript**
-- **Tailwind CSS**
-- **Framer Motion** & **Lucide Icons** – for modern, interactive UI
-- **Context API** – for global state management (user profiles & dashboard data)
+## Tech stack
 
-### ⚙️ Backend
-- **FastAPI (Python)** – RESTful API with modular structure  
-- **PostgreSQL** – relational database for clients, transactions & investments  
-- **Docker** – containerized deployment for backend, database & AI services  
+**Backend:** Python, FastAPI, AWS Bedrock (Claude Sonnet 4), PostgreSQL 16, Flask, Docker Compose, scikit-learn
+**Frontend:** React, TypeScript, Vite, Tailwind CSS, Recharts, three.js
 
-### 🧠 Machine Learning & Agentic Workflow
-- **AWS Bedrock (Claude 3 Sonnet)** – core AI model for financial insights & chat assistant  
-- **Custom ML Pipelines** – used for user profiling, transaction analysis & risk prediction  
-- **Google Colab** – used for model training, data exploration, and experimentation  
-- **MCP Server Integration** – secure orchestration between AI and backend components  
+## How to run
 
-### ☁️ Cloud & Infrastructure
-- **Amazon Web Services (AWS)** – scalable model hosting and infrastructure management  
-- **Docker Compose** – orchestrating API, database, and AI agents in unified environments  
+```bash
+cd backend/fastapi_web
+cp .env.example .env        # fill in your AWS Bedrock credentials
+cd ..
+docker compose up --build   # Postgres :5432, query API :8080, agent API :8090
+curl localhost:8090/health
+```
 
----
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-## 🧮 How It Works
+> The schema and seed data for the `clients` and `transactions` tables are not in the repo yet (see below).
 
-1. **Data Analysis** – The ML models analyze transaction history to estimate the user’s risk profile.  
-2. **Agentic Reasoning** – AI agents interpret the user’s request and access data from the database.  
-3. **Personalized Response** – The chatbot provides recommendations and financial visualizations in real time.
+## What I'd improve
 
----
+- **Real data layer.** The `database_info` tool is currently stubbed and returns the default category. It should use the existing `build_sql_client_risk` query. `init.sql` should also contain the schema and seed data for `clients` and `transactions`.
+- **Risk model.** Start from baselines, report macro-F1, and try class weighting. Better still, use a dataset with real signal.
+- **Planner evaluation.** Build a small test set of questions with their expected tool plans, to measure how often the planner picks the right tools.
+- **Voice features.** Move the OpenAI speech-to-text and text-to-speech calls behind the backend, so no API key ships to the browser. `ChatAI.tsx` also references an undefined `apiKey`.
+- **Code hygiene.** Remove the old `main1.py` / `main2.py`. Add unit tests for `_sanitize_sql` and the placeholder resolver.
 
-## 🌍 Impact & Feasibility
+## My contribution
 
-**Real-World Impact**  
-- Helps clients invest smarter and with more confidence.  
-- Increases trust and engagement in the client–bank relationship.  
+Team Skepya. My parts:
 
-**Business Feasibility**  
-- Low integration cost.  
-- High scalability.  
-- Fast ROI through cross-selling and increased engagement.
-
----
-
-## 🧭 Future Implementations
-
-- 🔒 Secure integration with real bank accounts (Open Banking APIs).  
-- 📈 Predictive recommendations powered by advanced ML models.  
-- 🧍‍♂️ Psychological risk profiling at user level.  
-
----
-
-## 👥 Team Skepya
-
-Marin Radu · Popescu Sebastian · Ragabeja Andra · Repciuc Valentin · Roșcan Rares
-
----
-
-## ❤️ Acknowledgments
-
-Built with ❤️ and collaboration during **NEXXT AI Hackathon 2025** —  
-a national competition organized in partnership with **Raiffeisen Bank**.
-
-From over **70 initial teams** (more than **250 candidates**),  
-only **13 teams** advanced after the technical selection phase to develop real AI-driven projects.  
-We are proud to share that **FinAI by Team Skepya** was among the **7 finalist teams** selected for the grand finale.
-
-Special thanks to the **mentors, judges, and organizers** who guided our innovation journey and inspired us to push the boundaries of AI in finance.
+- **Risk classifier and evaluation:** built the scikit-learn pipeline (imputation, scaling, one-hot encoding, Random Forest) and evaluated it against a majority-class baseline. The model does not beat the baseline on this dataset (accuracy 0.60 vs 0.62, macro-F1 0.27 vs 0.25), so the agent relies on the risk category stored for each client instead.
+- **Agent**, together with Rareș Roșcan: the plan → execute → answer flow. This covers the tool definitions, tool calling (a JSON plan from the planner, executed step by step with placeholders passing results between tools) and generating the final answer from the tool outputs.
